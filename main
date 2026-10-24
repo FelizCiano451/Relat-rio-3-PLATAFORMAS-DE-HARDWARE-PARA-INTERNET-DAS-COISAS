@@ -1,0 +1,64 @@
+const int trigPin = 27;
+const int echoPin = 26;
+
+#define SOUND_SPEED 0.034 // cm/uS
+
+long duracao;
+float distanciaCM;
+
+volatile unsigned long tempoInicio = 0;
+volatile unsigned long tempoFim = 0;
+volatile bool novaLeituraDisponivel = false;
+
+void IRAM_ATTR echoISR() {
+  if (digitalRead(echoPin) == HIGH) {   // Captura instantânea da subida do sinal
+    tempoInicio = micros();
+  } else {
+    tempoFim = micros();                // Captura instantânea da descida do sinal
+    novaLeituraDisponivel = true;
+  }
+}
+
+void setup() {
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+  Serial.begin(115200);
+
+  // Interrupção em qualquer mudança de nível (subida e descida) no pino ECHO
+  attachInterrupt(digitalPinToInterrupt(echoPin), echoISR, CHANGE);
+}
+
+void loop() {
+  // Pulso de 10 us no TRIG
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+
+  // Aguarda a ISR sinalizar que a medição terminou (com timeout de 50 ms)
+  unsigned long espera = millis();
+  while (!novaLeituraDisponivel && (millis() - espera < 50)) {
+    // aguardando a interrupção
+  }
+
+  if (novaLeituraDisponivel) {
+    // Cópia atômica das variáveis compartilhadas com a ISR
+    noInterrupts();
+    unsigned long inicio = tempoInicio;
+    unsigned long fim = tempoFim;
+    novaLeituraDisponivel = false;
+    interrupts();
+
+    duracao = fim - inicio;
+    distanciaCM = duracao * SOUND_SPEED / 2;
+
+    Serial.print("Distância: ");
+    Serial.print(distanciaCM);
+    Serial.println(" cm");
+  } else {
+    Serial.println("Nenhum objeto detectado (timeout)");
+  }
+
+  delay(1000);
+}
